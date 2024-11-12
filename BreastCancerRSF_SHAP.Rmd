@@ -1,0 +1,412 @@
+---
+title: "RANDOM SURVIVAL FORESTS (RSF) WITH SHAP ANALYSIS"
+subtitle: "RSF MODEL"
+author:
+  - "Theophilus G. Baidoo^[tbaidoo@iu.edu, Indiana University Bloomington.]"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  bookdown::pdf_document2:
+    fig_caption: true
+    latex_engine: xelatex
+    number_sections: false
+    toc: False
+    toc_depth: 4
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{pdfpages}
+  - \usepackage{amssymb}
+  - \usepackage{amsfonts}
+  - \usepackage{amsthm}
+  - \usepackage{floatrow}
+  - \usepackage{pdfpages}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{Theophilus Baidoo}
+  - \lhead{}
+  - \cfoot{\thepage}
+  - \usepackage{algorithm}
+  - \usepackage[noend]{algpseudocode}
+geometry: margin=0.8in
+fontsize: 12pt
+params:
+  proj_number:
+  proj_title: ""
+---
+
+
+```{r}
+library(dplyr)
+library(caret)
+library(survminer)
+library(randomForestSRC)
+library(survival)
+library(ggplot2)
+library(SurvMetrics)
+library(pec)
+
+set.seed(100)
+```
+
+
+```{r}
+# Initialize lists to store C-index, Brier Score, and IBS for each iteration
+c_index_scores <- numeric()
+brier_scores <- numeric()
+ibs_scores <- numeric()
+
+# Set the number of iterations for evaluation
+num_iterations <- 10
+
+# Step 1: Load and Preprocess Data
+
+data <- read.csv("SEER.csv")
+head(data)
+
+new_names <- c("Progesterone.Status" = "P.Status",
+               "Estrogen.Status" = "E.Status",
+               "Regional.Node.Examined" = "Reg.Examined",
+               "Reginol.Node.Positive" = "Reg.Positive",
+               "Marital.Status" = "M.Status")
+
+for (old_name in names(new_names)) {
+  data <- data %>% rename(!!new_names[old_name] := !!sym(old_name))
+}
+
+data <- data %>%
+  mutate(Race = case_when(
+    Race == "Other (American Indian/AK Native, Asian/Pacific Islander)" ~ "Other",
+    Race == "White" ~ "White",
+    Race == "Black" ~ "Black"
+  )) %>%
+  mutate(Grade = case_when(
+    Grade == "Moderately differentiated; Grade II" ~ "Grade II",
+    Grade == "Poorly differentiated; Grade III" ~ "Grade III",
+    Grade == "Well differentiated; Grade I" ~ "Grade I",
+    Grade == "Undifferentiated; anaplastic; Grade IV" ~ "Grade IV"
+  )) %>%
+  mutate(M.Status = case_when(
+    M.Status == "Married (including common law)" ~ "Married",
+    M.Status == "Divorced" ~ "Divorced",
+    M.Status == "Single (never married)" ~ "Single",
+    M.Status == "Widowed" ~ "Widowed",
+    M.Status == "Separated" ~ "Separated"
+  )) %>%
+  mutate(Status = ifelse(Status == "Alive", 0, 1))
+
+# Convert categorical variables to factors
+categorical_vars <- c("Race", "M.Status", "T.Stage", "N.Stage", "A.Stage", "Grade", "E.Status", "P.Status")
+data[categorical_vars] <- lapply(data[categorical_vars], as.factor)
+data <- data[, -6] # Remove unnecessary column (adjust as necessary)
+
+# Define survival formula
+v.f <- as.formula("Surv(Survival.Months, Status) ~ .")
+
+# Step 2: Select the Best Splitting Criterion
+
+splitrule <- c("logrank", "logrankscore")
+nrep <- 10
+ntree <- 1000
+err.rate <- matrix(0, nrow = length(splitrule), ncol = nrep)
+rownames(err.rate) <- splitrule
+
+for (j in 1:length(splitrule)) {
+  for (k in 1:nrep) {
+    model <- rfsrc(v.f, data = data, ntree = ntree, splitrule = splitrule[j])
+    err.rate[j, k] <- model$err.rate[ntree]
+  }
+}
+
+# Calculate mean error rates for each split rule
+err.rate_summary <- data.frame(
+  SplitRule = splitrule,
+  MeanErrorRate = apply(err.rate, 1, mean),
+  SDErrorRate = round(apply(err.rate, 1, sd), 4)
+)
+
+print(err.rate_summary)
+
+# Select the best split rule based on mean error rate
+best_splitrule <- err.rate_summary$SplitRule[which.min(err.rate_summary$MeanErrorRate)]
+cat("Selected Best Splitting Criterion:", best_splitrule, "\n")
+
+# Step 3: Hyperparameter Tuning with 5-Fold Cross-Validation on Training Set
+
+# Define a grid of hyperparameters to test
+tune_grid <- expand.grid(
+  mtry = c(2, 3, 4),
+  nodesize = c(1, 3, 5),
+  ntree = c(1001, 2001, 3001)
+)
+
+# Initialize an empty data frame to store results
+cv_results <- data.frame()
+
+# Define number of folds for cross-validation
+k_folds <- 5
+folds <- createFolds(1:nrow(data), k = k_folds, list = TRUE)
+
+# Perform k-fold cross-validation for each combination of hyperparameters
+for (i in 1:nrow(tune_grid)) {
+  # Use a unique variable name for the current iteration parameters
+  current_params <- tune_grid[i, ]
+  cv_errors <- c()  # Store cross-validation errors
+  
+  for (fold in 1:k_folds) {
+    # Split into training and validation folds
+    fold_train <- data[folds[[fold]], ]
+    fold_val <- data[-folds[[fold]], ]
+    
+    # Train the model with current hyperparameters
+    model <- rfsrc(
+      v.f,
+      data = fold_train,
+      ntree = current_params$ntree,
+      mtry = current_params$mtry,
+      nodesize = current_params$nodesize,
+      splitrule = best_splitrule
+    )
+    
+    # Predict on validation fold and calculate error rate
+    val_pred <- predict(model, newdata = fold_val)
+    val_error <- val_pred$err.rate[current_params$ntree]
+    cv_errors <- c(cv_errors, val_error)
+  }
+  
+  # Calculate mean CV error for this parameter set
+  mean_cv_error <- mean(cv_errors)
+  cv_results <- rbind(cv_results, c(current_params, MeanCVError = mean_cv_error))
+}
+
+# Select the best hyperparameters based on mean cross-validation error
+best_params <- cv_results[which.min(cv_results$MeanCVError), ]
+print("Best Hyperparameters:")
+print(best_params)
+
+# Step 4: Run Multiple Iterations for Final Model Evaluation (C-index, Brier Score, IBS)
+
+for (iteration in 1:num_iterations) {
+  cat("Iteration:", iteration, "\n")
+  
+  # Partition the data into training and test sets
+  train_index <- createFolds(1:nrow(data), 2)[[1]]
+  train_data <- data[train_index, ]
+  test_data <- data[-train_index, ]
+  
+  # Train the model with the best hyperparameters and splitting criterion
+  final_model <- rfsrc(
+    v.f,
+    data = train_data,
+    ntree = best_params$ntree,
+    mtry = best_params$mtry,
+    nodesize = best_params$nodesize,
+    splitrule = best_splitrule,
+    importance = T
+  )
+  
+  print(final_model)
+  plot(final_model)
+  
+  # Predict on the test set
+  test_pred <- predict(final_model, newdata = test_data)$survival
+  
+  # Define survival object for test data
+  surv_obj <- Surv(test_data$Survival.Months, test_data$Status)
+  dis_time <- final_model$time.interest
+  med_index <- median(1:length(dis_time))
+  
+  # Calculate C-index at median time
+  c_index_scores[iteration] <- Cindex(surv_obj, predicted = test_pred[, med_index])
+  
+  # Calculate Brier Score at a specific time (median of `time.interest`)
+  t_star <- median(dis_time)
+  brier_scores[iteration] <- Brier(surv_obj, pre_sp = test_pred[, med_index], t_star)
+  
+  # Calculate Integrated Brier Score (IBS) using SurvMetrics
+  ibs_scores[iteration] <- IBS(surv_obj, sp_matrix = test_pred, dis_time)
+}
+
+# Summarize results
+
+# Calculate mean and standard deviation for each metric
+c_index_mean <- mean(c_index_scores)
+c_index_sd <- sd(c_index_scores)
+brier_mean <- mean(brier_scores)
+brier_sd <- sd(brier_scores)
+ibs_mean <- mean(ibs_scores)
+ibs_sd <- sd(ibs_scores)
+
+# Create data frames for results
+data_CI <- data.frame('Cindex' = c_index_scores, 'Model' = 'RSF')
+data_BS <- data.frame('BrierScore' = brier_scores, 'Model' = 'RSF')
+data_IBS <- data.frame('IBS' = ibs_scores, 'Model' = 'RSF')
+
+# Plot C-index results
+ggplot(data_CI, aes(x = Model, y = Cindex, fill = Model)) +
+  geom_boxplot() +
+  scale_fill_manual(values = "#88CCFF") +
+  labs(title = "C-index for RSF", y = "C-index", x = "Model")
+
+# Plot Brier Score results
+ggplot(data_BS, aes(x = Model, y = BrierScore, fill = Model)) +
+  geom_boxplot() +
+  scale_fill_manual(values = "#88CCFF") +
+  labs(title = "Brier Score at Median Time for RSF", y = "Brier Score", x = "Model")
+
+# Plot IBS results
+ggplot(data_IBS, aes(x = Model, y = IBS, fill = Model)) +
+  geom_boxplot() +
+  scale_fill_manual(values = "#88CCFF") +
+  labs(title = "Integrated Brier Score (IBS) for RSF", y = "IBS", x = "Model")
+
+# Display average metrics with standard deviations
+cat("Average C-index for RSF:", c_index_mean, "±", c_index_sd, "\n")
+cat("Average Brier Score for RSF:", brier_mean, "±", brier_sd, "\n")
+cat("Average IBS for RSF:", ibs_mean, "±", ibs_sd, "\n")
+
+```
+
+
+```{r}
+# Step 5: SHAP Analysis for the Test Data
+# Function to get predictions for SHAP
+library(kernelshap)
+library(shapviz)
+
+pred_fun <- function(m, x) {
+  predict(m, newdata = x)$predicted
+}
+
+# Set feature names (excluding survival outcome variables)
+xvars <- setdiff(colnames(test_data), c("Survival.Months", "Status"))
+
+# Compute SHAP values using kernelSHAP
+shap_values <- kernelshap(
+  final_model,
+  X = test_data[xvars],
+  feature_names = xvars,
+  bg_X = test_data[sample(nrow(test_data), size = 100), ],
+  pred_fun = pred_fun
+)
+
+# Visualize SHAP values
+sv <- shapviz(shap_values)
+sv_importance(sv)
+sv_importance(sv, kind = "beeswarm")
+sv_dependence(sv, "Age") # Update this with a relevant feature if "age" isn't in your dataset
+```
+
+
+
+```{r}
+
+
+# Step 6: Generate Survival Curves Based on Tumor Size Categories
+
+test_data <- test_data %>%
+  mutate(Tumor.Size.Category = case_when(
+    Tumor.Size < 25 ~ "Low",      # Tumor size < 25 mm
+    Tumor.Size >= 25 & Tumor.Size <= 45 ~ "Medium",  # Tumor size between 25-50 mm
+    Tumor.Size > 45 ~ "High"      # Tumor size > 50 mm
+  ))
+
+
+
+category_counts <- test_data %>%
+  count(Tumor.Size.Category)
+print(category_counts)
+
+
+test_data$Tumor.Size.Category <- factor(test_data$Tumor.Size.Category, levels = c("Low", "Medium", "High"))
+
+
+test_pred <- predict(final_model, newdata = test_data)$survival
+
+
+time_points <- final_model$time.interest
+
+
+# Create a long-format data frame with survival predictions and tumor size category
+surv_data <- data.frame(
+  Time = rep(time_points, each = nrow(test_data)),
+  Survival = as.vector(test_pred),
+  Tumor.Size.Category = rep(test_data$Tumor.Size.Category, times = length(time_points))
+)
+
+# Aggregate to get the average survival probability at each time point for each tumor size category
+surv_data_avg <- surv_data %>%
+  group_by(Time, Tumor.Size.Category) %>%
+  summarize(Survival = mean(Survival), .groups = 'drop')
+
+
+ggplot(surv_data_avg, aes(x = Time, y = Survival, color = Tumor.Size.Category)) +
+  geom_step(size = 1) +
+  labs(title = "Survival Curves for Different Tumor Sizes", 
+       x = "Time (Months)", 
+       y = "Survival Probability",
+       color = "Tumor Size") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  guides(color = guide_legend(override.aes = list(size = 2)))
+
+
+
+#Step 6: Generate Survival Curves Based on Age Categories
+
+
+test_data <- test_data %>%
+  mutate(Age.Category = case_when(
+    Age >= 30 & Age <= 50 ~ "Age 30-50",   # 30-50 years
+    Age >= 51 & Age <= 60 ~ "Age 51-60",   # 51-60 years
+    Age >= 61 & Age <= 70 ~ "Age 61-70"    # 61-70 years
+  ))
+
+
+category_counts_age <- test_data %>%
+  count(Age.Category)
+print(category_counts_age)
+
+
+test_data$Age.Category <- factor(test_data$Age.Category, levels = c("Age 30-50", "Age 51-60", "Age 61-70"))
+
+#Predict survival probabilities on the test set using the final RSF model
+test_pred_age <- predict(final_model, newdata = test_data)$survival
+
+#Define a simplified time vector based on model time points
+time_points_age <- final_model$time.interest
+
+# Step 6: Create survival curve data and aggregate survival probabilities
+# Create a long-format data frame with survival predictions and age category
+surv_data_age <- data.frame(
+  Time = rep(time_points_age, each = nrow(test_data)),
+  Survival = as.vector(test_pred_age),
+  Age.Category = rep(test_data$Age.Category, times = length(time_points_age))
+)
+
+# Aggregate to get the average survival probability at each time point for each age category
+surv_data_avg_age <- surv_data_age %>%
+  group_by(Time, Age.Category) %>%
+  summarize(Survival = mean(Survival), .groups = 'drop')
+
+
+ggplot(surv_data_avg_age, aes(x = Time, y = Survival, color = Age.Category)) +
+  geom_step(size = 1) +
+  labs(title = "Survival Curves for Different Age Groups", 
+       x = "Time (Months)", 
+       y = "Survival Probability",
+       color = "Age Group") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  guides(color = guide_legend(override.aes = list(size = 2)))
+
+
+
+
+
+
+
+
+
+
+```
+
