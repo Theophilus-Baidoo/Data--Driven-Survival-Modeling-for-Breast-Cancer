@@ -293,7 +293,7 @@ shap_values <- kernelshap(
 sv <- shapviz(shap_values)
 sv_importance(sv)
 sv_importance(sv, kind = "beeswarm")
-sv_dependence(sv, "Age") # Update this with a relevant feature if "age" isn't in your dataset
+sv_dependence(sv, "Age")
 ```
 
 
