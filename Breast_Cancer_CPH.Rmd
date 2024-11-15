@@ -1,0 +1,1146 @@
+---
+title: "Breast Cancer Analysis"
+subtitle: "SEER Dataset"
+author: 
+  - "Theophilus G. Baidoo^[]"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  bookdown::pdf_document2:
+    fig_caption: true
+    latex_engine: xelatex
+    number_sections: false
+    toc: true
+    toc_depth: 4
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{pdfpages}
+  - \usepackage{amssymb}
+  - \usepackage{amsfonts}
+  - \usepackage{amsthm}
+  - \usepackage{floatrow}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{Theophilus Baidoo}
+  - \lhead{}
+  - \cfoot{\thepage}
+  - \usepackage{algorithm}
+  - \usepackage[noend]{algpseudocode}
+geometry: margin=0.8in
+fontsize: 11pt
+params:
+  proj_number: 
+  proj_title: ""
+---
+
+```{r, warning=FALSE, include=FALSE}
+
+knitr::opts_chunk$set(eval = T, echo = T, warning = F, message = F, fig.pos = "H", out.extra = "", fig.align = "center", cache = T)
+
+
+library(dplyr)
+library(ggthemes)
+library(ggplot2)
+library(tidyr)
+library(knitr)
+library(patchwork)
+library(kableExtra)
+library(MatchIt)
+library(mice)
+library(survey)
+library(jtools)
+library(broom)
+library(gt)
+library(cobalt)
+library(cowplot)
+library(tidyverse)
+library(survival)
+library(survminer)
+library(grid)
+library(Greg)
+library(caret)
+library(psych)
+library(magrittr)
+library(riskRegression) 
+library(survAUC)
+library(SurvMetrics)
+library(randomForestSRC)
+library(pec)
+library(viridis)
+
+set.seed(100)
+
+options(kableExtra.auto_format = F) 
+
+
+
+
+options(digits = 4)
+
+
+theme_set(theme_bw())
+```
+
+
+
+
+```{r,include=FALSE}
+
+data<-read.csv("SEER.csv")
+
+
+new_names <- c("Progesterone.Status" = "P.Status",
+               "Estrogen.Status" = "E.Status",
+               "Regional.Node.Examined" = "Reg.Examined",
+               "Reginol.Node.Positive" = "Reg.Positive",
+               "Marital.Status" = "M.Status")
+
+
+for (old_name in names(new_names)) {
+  data <- data %>% rename(!!new_names[old_name] := !!sym(old_name))
+}
+
+head(data)
+str(data)
+attach(data)
+
+```
+
+
+
+```{r,include=FALSE}
+data <- data %>%
+  mutate(Race = case_when(
+    Race == "Other (American Indian/AK Native, Asian/Pacific Islander)" ~ "Other",
+    Race == "White" ~ "White",
+    Race == "Black" ~ "Black"
+  ))
+
+data <- data %>%
+  mutate(Grade = case_when(
+    Grade == "Moderately differentiated; Grade II" ~ "Grade II",
+    Grade == "Poorly differentiated; Grade III" ~ "Grade III",
+    Grade == "Well differentiated; Grade I" ~ "Grade I",
+    Grade == "Undifferentiated; anaplastic; Grade IV" ~ "Grade IV"
+  ))
+
+data <- data %>%
+  mutate(M.Status = case_when(
+    M.Status == "Married (including common law)" ~ "Married",
+    M.Status == "Divorced" ~ "Divorced",
+    M.Status == "Single (never married)" ~ "Single",
+    M.Status == "Widowed" ~ "Widowed",
+    M.Status == "Separated" ~ "Separated"
+  ))
+
+```
+
+
+```{r,include=FALSE}
+library(dplyr)
+
+data <- data %>%
+  mutate(Status = case_when(
+    Status == "Alive" ~ 0,
+    Status == "Dead" ~ 1
+  ))
+
+table(data$Status)
+
+```
+
+
+```{r, include=FALSE}
+
+categorical_vars <- c("Race", "M.Status", "T.Stage", "N.Stage", "A.Stage", "Grade", "E.Status", "P.Status")
+
+
+data[categorical_vars] <- lapply(data[categorical_vars], as.factor)
+data<-data[,-c(6)]
+
+
+str(data)
+```
+
+
+
+```{r,include=FALSE}
+#Fit the survival model based on Race
+
+fit<-survfit(Surv(Survival.Months,Status)~Race, data = data)
+plot_basic <- ggsurvplot(
+  fit,
+  data = data,
+  pval = TRUE,           
+  risk.table = TRUE,      
+  conf.int = TRUE,        
+  ggtheme = theme_minimal() 
+)
+
+print(plot_basic)
+
+```
+
+
+
+
+```{r,include=FALSE}
+# Perform the pairwise comparisons for Race with Bonferroni adjustment
+pairwise_comp_race <- pairwise_survdiff(Surv(Survival.Months, Status) ~ Race, data = data, p.adjust.method = 'bonferroni')
+
+
+pairwise_pval_race <- as.data.frame(pairwise_comp_race$p.value)
+
+
+rownames(pairwise_pval_race) <- paste("Race", rownames(pairwise_pval_race), sep = "  ")
+colnames(pairwise_pval_race) <- paste("P-Value for Race", colnames(pairwise_pval_race))
+
+## Pairwise log rank test for Race
+pairwise_pval_race
+```
+
+
+```{r,include=F}
+
+# Fit the survival model based on T.Stage
+fit1 <- survfit(Surv(Survival.Months, Status) ~ T.Stage, data = data)
+
+plot2 <- ggsurvplot(
+  fit1,
+  data = data,
+  pval = TRUE,             
+  risk.table = TRUE,         
+  conf.int = TRUE,          
+  ggtheme = theme_minimal()  
+)
+print(plot2)  
+
+
+```
+
+
+```{r, include=FALSE}
+# Perform pairwise survival comparisons for T.Stage with Bonferroni adjustment
+pairwise_comp1 <- pairwise_survdiff(Surv(Survival.Months, Status) ~ T.Stage, data = data, p.adjust.method = 'bonferroni')
+
+
+pairwise_pval1 <- as.data.frame(pairwise_comp1$p.value)
+
+
+rownames(pairwise_pval1) <- paste("", rownames(pairwise_pval1), sep = "  ")
+colnames(pairwise_pval1) <- paste("P-Value for T.Stage", colnames(pairwise_pval1))
+
+## Pairwise log rank test for T-Stage
+pairwise_pval1
+```
+
+
+
+```{r,include=FALSE}
+
+# Fit the survival model based on N.Stage
+fit2 <- survfit(Surv(Survival.Months, Status) ~ N.Stage, data = data)
+
+
+
+plot3 <- ggsurvplot(
+  fit2,
+  data = data,
+  pval = TRUE,              
+  risk.table = TRUE,         
+  conf.int = TRUE,           
+  ggtheme = theme_minimal()  
+)
+print(plot3) 
+
+```
+
+
+```{r, include=FALSE}
+# Perform pairwise survival comparisons for N.Stage with Bonferroni adjustment
+pairwise_comp2 <- pairwise_survdiff(Surv(Survival.Months, Status) ~ N.Stage, data = data, p.adjust.method = 'bonferroni')
+
+pairwise_pval2 <- as.data.frame(pairwise_comp2$p.value)
+
+
+rownames(pairwise_pval2) <- paste("", rownames(pairwise_pval2), sep = "  ")
+colnames(pairwise_pval2) <- paste("P-Value for N.Stage", colnames(pairwise_pval2))
+
+## Pairwise log rank test for N-Stage
+pairwise_pval2
+```
+
+
+
+```{r, include=FALSE}
+# Fit the survival model based on M.Status
+fit3 <- survfit(Surv(Survival.Months, Status) ~ M.Status, data = data)
+
+
+plot4 <- ggsurvplot(
+  fit3,
+  data = data,
+  pval = TRUE,              
+  risk.table = TRUE,         
+  conf.int = TRUE,           
+  ggtheme = theme_minimal()  
+)
+print(plot4)  
+
+```
+
+
+```{r, include=FALSE}
+# Perform pairwise survival comparisons for M.Status with Bonferroni adjustment
+pairwise_comp3 <- pairwise_survdiff(Surv(Survival.Months, Status) ~ M.Status, data = data, p.adjust.method = 'bonferroni')
+
+
+
+pairwise_pval3 <- as.data.frame(pairwise_comp3$p.value)
+
+
+rownames(pairwise_pval3) <- paste("", rownames(pairwise_pval3), sep = "  ")
+colnames(pairwise_pval3) <- paste("P-Value for M.Status", colnames(pairwise_pval3))
+
+## Pairwise log rank test for Marital Status
+pairwise_pval3
+```
+
+
+
+```{r}
+# Load dplyr for case_when
+library(dplyr)
+
+# Assuming your data frame is named 'data' and it has an 'Age' column
+data <- data %>%
+  mutate(age_group = case_when(
+    Age >= 30 & Age <= 50 ~ "30-50",
+    Age >= 51 & Age <= 60 ~ "51-60",
+    Age >= 61 & Age <= 70 ~ "61-70",
+    TRUE ~ NA_character_  # To handle ages outside the specified ranges, if any
+  ))
+
+# Display the count of each age group
+table(data$age_group)
+
+
+```
+
+
+```{r}
+fit8 <- survfit(Surv(Survival.Months, Status) ~ age_group, data = data)
+
+
+plot5 <- ggsurvplot(
+  fit8,
+  data = data,
+  pval = TRUE,            
+  risk.table = TRUE,        
+  conf.int = TRUE   
+)
+
+
+print(plot5)
+ 
+
+```
+
+
+```{r,include=FALSE}
+# Perform pairwise survival comparisons for age_group with Bonferroni adjustment
+pairwise_comp8 <- pairwise_survdiff(Surv(Survival.Months, Status) ~ age_group, data = data, p.adjust.method = 'bonferroni')
+
+
+pairwise_pval8 <- as.data.frame(pairwise_comp8$p.value)
+
+rownames(pairwise_pval8) <- paste("Age Group", rownames(pairwise_pval8), sep = "  ")
+colnames(pairwise_pval8) <- paste("P-Value for Age", colnames(pairwise_pval8))
+
+
+pairwise_pval8
+
+```
+
+
+
+```{r}
+# Using case_when with boundary conditions matching cut
+data$Tumor_Size_Category <- factor(dplyr::case_when(
+    data$Tumor.Size < 25 ~ "<25mm",
+    data$Tumor.Size >= 25 & data$Tumor.Size <= 45 ~ "25-45mm", # Changed <= 45 to < 45
+    data$Tumor.Size >= 45 ~ ">45mm"
+), levels = c("<25mm", "25-45mm", ">45mm"))
+
+# Display the frequency table for the new tumor size categories
+table(data$Tumor_Size_Category)
+
+
+
+
+```
+
+
+```{r}
+
+fit_tumor <- survfit(Surv(Survival.Months, Status) ~ Tumor_Size_Category, data = data)
+
+plot_tumor <- ggsurvplot(
+  fit_tumor,
+  data = data,
+  pval = TRUE,            
+  risk.table = TRUE,         
+  conf.int = TRUE,           
+  ggtheme = theme_minimal()  
+)
+
+print(plot_tumor)
+
+
+```
+
+```{r}
+# Perform pairwise survival comparisons for tumor_size_group with Bonferroni adjustment
+pairwise_comp_tumor <- pairwise_survdiff(Surv(Survival.Months, Status) ~ Tumor_Size_Category, data = data, p.adjust.method = 'bonferroni')
+
+
+pairwise_pval_tumor <- as.data.frame(pairwise_comp_tumor$p.value)
+
+
+rownames(pairwise_pval_tumor) <- paste("", rownames(pairwise_pval_tumor), sep = "  ")
+colnames(pairwise_pval_tumor) <- paste("P-Value for Tumor Size", colnames(pairwise_pval_tumor))
+
+pairwise_pval_tumor
+```
+
+
+
+
+## Cox Proportional Hazard model (CPH) and Assumptions (using actual age and tumor size and not groupings)
+
+```{r,include=FALSE}
+
+
+# Initialize IBS metrics and proportional hazards assumption test results
+metrics_cox = numeric(5)
+ph_test_results = list()
+cox_summary_list = list()  # Store summaries for each iteration
+
+set.seed(123)
+
+# Loop over 5 iterations
+for (i in 1:5) {
+  
+  # Split data into training and test sets
+  index_data = createFolds(1:nrow(data), 5, list = TRUE)
+  train_data = data[index_data[[1]],]
+  test_data = data[index_data[[2]],]
+  
+  # Fit Cox proportional hazards model
+  fitcox = coxph(Surv(Survival.Months, Status) ~ ., data = train_data, x = TRUE)
+  
+  # Store the model summary for this iteration using broom::tidy
+  cox_summary_list[[i]] <- tidy(fitcox)
+  
+  # Check proportional hazards assumption
+  ph_test = cox.zph(fitcox)
+  ph_test_results[[i]] = ph_test
+  
+  # Survival.Months points for the Cox model predictions
+  dis_Survival.Months = sort(unique(train_data$Survival.Months))
+  
+  # Predict survival probabilities for the test data
+  mat_cox = predictSurvProb(fitcox, test_data, dis_Survival.Months)
+  
+  # Create a survival object for the test data
+  surv_obj = Surv(test_data$Survival.Months, test_data$Status)
+  
+  # Calculate the IBS for the Cox model
+  metrics_cox[i] = IBS(surv_obj, sp_matrix = mat_cox, dis_Survival.Months)
+}
+```
+
+
+```{r}
+# ---- Step 2: Print the summary for the 5th iteration ----
+
+
+cox_summary_5th = cox_summary_list[[5]]
+
+
+cox_conf_5th <- confint(fitcox)
+
+cox_summary_5th <- cbind(cox_summary_5th, cox_conf_5th)
+colnames(cox_summary_5th)[6:7] <- c("conf.low", "conf.high")
+
+
+cox_summary_5th <- cox_summary_5th %>%
+  mutate(
+    hazard_ratio = exp(estimate),      
+    conf.low = exp(conf.low),          
+    conf.high = exp(conf.high),        
+    p.value = round(p.value, 3),       
+    estimate = round(estimate, 3),     
+    std.error = round(std.error, 3),   
+    hazard_ratio = round(hazard_ratio, 3),
+    conf.low = round(conf.low, 3),
+    conf.high = round(conf.high, 3)
+  )
+
+# Ensure that 'term' column is unique and correctly formatted
+cox_summary_5th <- cox_summary_5th %>%
+  distinct(term, .keep_all = TRUE)  # Remove duplicated rows based on 'term'
+
+
+cox_summary_table <- cox_summary_5th %>%
+  select(term, estimate, std.error, statistic, p.value, hazard_ratio, conf.low, conf.high) %>%
+  kable("latex", booktabs = TRUE, caption = "Cox Proportional-Hazards Model Summary for 5th Iteration") %>%
+  kable_styling(latex_options = c("striped", "hold_position")) %>%
+  add_header_above(c(" " = 1, "Coefficients" = 4, "Hazard Ratios" = 3))
+
+# Print the table
+cox_summary_table
+
+```
+
+
+```{r}
+# Check the proportional hazards assumption for the 5th iteration
+ph_test_5th = ph_test_results[[5]]
+
+# Print the proportional hazards test results
+print(ph_test_5th)
+
+# Plot the Schoenfeld residuals to visually check the PH assumption for the 5th iteration
+plot(ph_test_5th, main = "Schoenfeld Residuals for 5th Iteration")
+
+# Identify variables that violated the PH assumption
+violated_vars <- ph_test_5th$table
+violated_vars <- violated_vars[violated_vars[, "p"] < 0.05, ]
+if (nrow(violated_vars) == 0) {
+  print("No variables violated the proportional hazards assumption.")
+} else {
+  print("Variables that violated the proportional hazards assumption:")
+  print(violated_vars)
+}
+```
+
+# Stratifying E Status, P Status
+
+```{r, include=FALSE}
+
+# Initialize IBS metrics and proportional hazards assumption test results
+metrics_cox_stratified = numeric(5)
+ph_test_results_stratified = list()
+cox_summary_list_stratified = list()  # Store summaries for each iteration
+cox_model_list_stratified = list()  # Store the Cox models for each iteration
+
+set.seed(123)
+
+# Generate cross-validation folds
+index_data = createFolds(1:nrow(data), k = 5)
+
+# Loop over 5 iterations using different folds
+for (i in 1:5) {
+  
+  # Split data into training and test sets based on fold
+  train_data = data[-index_data[[i]],]  # Use all but the i-th fold for training
+  test_data = data[index_data[[i]],]    # Use the i-th fold for testing
+  
+  # Check remaining variables after removing E.Status, P.Status
+  remaining_vars <- setdiff(names(train_data), c("E.Status", "P.Status", "Survival.Months", "Status"))
+  
+  if (length(remaining_vars) > 0) {
+    
+    # Dynamically construct the formula including stratification for E.Status, P.Status, and A.Stage
+    formula_str <- paste("Surv(Survival.Months, Status) ~", paste(remaining_vars, collapse = " + "), 
+                         "+ strata(E.Status) + strata(P.Status)")
+    cox_formula <- as.formula(formula_str)
+    
+    # Fit Cox proportional hazards model with stratification on E.Status, P.Status, and A.Stage
+    fitcox_stratified = coxph(cox_formula, data = train_data, x = TRUE)
+    cox_model_list_stratified[[i]] <- fitcox_stratified  # Store the Cox model for ggforest
+    
+    
+    cox_summary_list_stratified[[i]] <- tidy(fitcox_stratified)
+    
+    
+    ph_test_stratified = cox.zph(fitcox_stratified)
+    ph_test_results_stratified[[i]] = ph_test_stratified
+    
+    # Print the PH test result for the stratified model
+    print(paste("Iteration:", i))
+    print(ph_test_stratified)
+    
+    
+    plot(ph_test_stratified, main = paste("Schoenfeld Residuals - Stratified Model Iteration", i))
+    
+    # Time points for the Cox model predictions
+    dis_Survival.Months = sort(unique(train_data$Survival.Months))
+    
+    # Predict survival probabilities for the test data
+    mat_cox_stratified = predictSurvProb(fitcox_stratified, test_data, dis_Survival.Months)
+    
+    # Check if there are any NA values in the predicted matrix
+    if (any(is.na(mat_cox_stratified))) {
+      print(paste("Iteration", i, ": NA values detected in predicted survival probabilities. Skipping IBS calculation."))
+      next  # Skip the iteration if there are NA values
+    }
+    
+    # Create a survival object for the test data
+    surv_obj_stratified = Surv(test_data$Survival.Months, test_data$Status)
+    
+    
+    metrics_cox_stratified[i] = IBS(surv_obj_stratified, sp_matrix = mat_cox_stratified, dis_Survival.Months)
+    
+  } else {
+    stop("No remaining covariates to fit the model.")
+  }
+}
+```
+
+
+
+
+
+```{r}
+# Function to print the summary of the stratified Cox model for the 5th iteration and display LaTeX code
+print_cox_summary_with_latex <- function(cox_model_list_stratified, cox_summary_list_stratified) {
+  
+  if (!is.null(cox_model_list_stratified[[5]])) {
+    
+  
+    cox_summary_5th_stratified = cox_summary_list_stratified[[5]]
+    
+    
+    cox_conf_5th_stratified <- confint(cox_model_list_stratified[[5]])
+    
+    
+    cox_summary_5th_stratified <- cbind(cox_summary_5th_stratified, cox_conf_5th_stratified)
+    colnames(cox_summary_5th_stratified)[6:7] <- c("conf.low", "conf.high")
+    
+    
+    cox_summary_5th_stratified <- cox_summary_5th_stratified %>%
+      mutate(
+        hazard_ratio = exp(estimate),      
+        conf.low = exp(conf.low),          
+        conf.high = exp(conf.high),       
+        p.value = round(p.value, 3),      
+        estimate = round(estimate, 3),     
+        std.error = round(std.error, 3),   
+        hazard_ratio = round(hazard_ratio, 3),
+        conf.low = round(conf.low, 3),
+        conf.high = round(conf.high, 3)
+      )
+    
+    # Ensure that 'term' column is unique and correctly formatted
+    cox_summary_5th_stratified <- cox_summary_5th_stratified %>%
+      distinct(term, .keep_all = TRUE)  # Remove duplicated rows based on 'term'
+    
+    # Create the table using kableExtra and display it
+    cox_summary_table_stratified <- cox_summary_5th_stratified %>%
+      select(term, estimate, std.error, statistic, p.value, hazard_ratio, conf.low, conf.high) %>%
+      kable("latex", booktabs = TRUE, caption = "Stratified Cox Proportional-Hazards Model Summary for 5th Iteration") %>%
+      kable_styling(latex_options = c("striped", "hold_position")) %>%
+      add_header_above(c(" " = 1, "Coefficients" = 4, "Hazard Ratios" = 3))
+    
+    # Display the table (this is the usual kable rendering)
+    print(cox_summary_table_stratified)
+    
+    # Now, extract and display the raw LaTeX code for the table
+    latex_code <- cox_summary_5th_stratified %>%
+      select(term, estimate, std.error, statistic, p.value, hazard_ratio, conf.low, conf.high) %>%
+      kable(format = "latex", booktabs = TRUE, caption = "Stratified Cox Proportional-Hazards Model Summary for 5th Iteration") %>%
+      add_header_above(c(" " = 1, "Coefficients" = 4, "Hazard Ratios" = 3))
+    
+    # Print the LaTeX code to the console
+    cat(latex_code)
+    
+  } else {
+    print("The 5th iteration stratified model does not exist.")
+  }
+}
+
+# Call the function to display the table and extract the LaTeX code
+print_cox_summary_with_latex(cox_model_list_stratified, cox_summary_list_stratified)
+```
+
+
+
+```{r}
+
+# ---- Chunk 2: Check the Proportional Hazards Assumption ----
+
+check_ph_assumption <- function(ph_test_results_stratified) {
+  # Check the proportional hazards assumption for the 5th iteration of the stratified model
+  ph_test_5th_stratified = ph_test_results_stratified[[5]]
+  
+  # Print the proportional hazards test results to inspect the structure
+  print(ph_test_5th_stratified)
+  
+  # Plot the Schoenfeld residuals to visually check the PH assumption for the stratified model
+  plot(ph_test_5th_stratified, main = "Schoenfeld Residuals for Stratified Model - 5th Iteration")
+  
+  # Ensure that ph_test_5th_stratified$table is not NULL
+  if (!is.null(ph_test_5th_stratified$table)) {
+    
+    # Extract the test results table
+    violated_vars_stratified <- ph_test_5th_stratified$table
+    
+    # Filter for p-values < 0.05 (3rd column corresponds to p-values)
+    violated_vars_stratified <- violated_vars_stratified[violated_vars_stratified[, 3] < 0.05, , drop = FALSE]
+    
+    # Check if any rows remain after filtering
+    if (nrow(violated_vars_stratified) == 0) {
+      print("No variables violated the proportional hazards assumption after stratification.")
+    } else {
+      print("Variables that still violated the proportional hazards assumption after stratification:")
+      print(violated_vars_stratified)
+    }
+  } else {
+    print("No proportional hazards test results found or no violations detected.")
+  }
+}
+
+# Call the function
+check_ph_assumption(ph_test_results_stratified)
+```
+
+
+## Stratification with A Stage
+
+```{r, include=FALSE}
+
+
+# Initialize IBS metrics and proportional hazards assumption test results
+metrics_cox_stratified = numeric(5)
+ph_test_results_stratified = list()
+cox_summary_list_stratified = list()  # Store summaries for each iteration
+cox_model_list_stratified = list()  # Store the Cox models for each iteration
+
+set.seed(123)
+
+# Generate cross-validation folds
+index_data = createFolds(1:nrow(data), k = 5)
+
+# Function to refit model with stratification by A.Stage
+fit_with_A_stage_stratification <- function(train_data, test_data, remaining_vars) {
+  # Ensure factor levels for A.Stage
+  common_levels_A <- levels(factor(data$A.Stage))
+  train_data$A.Stage <- factor(train_data$A.Stage, levels = common_levels_A)
+  test_data$A.Stage <- factor(test_data$A.Stage, levels = common_levels_A)
+  
+  # Refit the model with additional stratification by A.Stage
+  formula_str <- paste("Surv(Survival.Months, Status) ~", paste(remaining_vars, collapse = " + "), 
+                       "+ strata(E.Status) + strata(P.Status) + strata(A.Stage)")
+  cox_formula <- as.formula(formula_str)
+  
+  fitcox_stratified_with_A_stage <- coxph(cox_formula, data = train_data, x = TRUE)
+  return(fitcox_stratified_with_A_stage)
+}
+
+# Loop over 5 iterations using different folds
+for (i in 1:5) {
+  
+  # Split data into training and test sets based on fold
+  train_data = data[-index_data[[i]],]  # Use all but the i-th fold for training
+  test_data = data[index_data[[i]],]    # Use the i-th fold for testing
+  
+  # Ensure consistent factor levels for E.Status and P.Status
+  common_levels_E <- levels(factor(data$E.Status))
+  common_levels_P <- levels(factor(data$P.Status))
+  
+  train_data$E.Status <- factor(train_data$E.Status, levels = common_levels_E)
+  test_data$E.Status <- factor(test_data$E.Status, levels = common_levels_E)
+  
+  train_data$P.Status <- factor(train_data$P.Status, levels = common_levels_P)
+  test_data$P.Status <- factor(test_data$P.Status, levels = common_levels_P)
+  
+  # Check remaining variables after removing E.Status, P.Status, and A.Stage
+  remaining_vars <- setdiff(names(train_data), c("E.Status", "P.Status", "A.Stage", "Survival.Months", "Status"))
+  
+  if (length(remaining_vars) > 0) {
+    
+    # Dynamically construct the formula for stratification by E.Status and P.Status
+    formula_str <- paste("Surv(Survival.Months, Status) ~", paste(remaining_vars, collapse = " + "), 
+                         "+ strata(E.Status) + strata(P.Status)")
+    cox_formula <- as.formula(formula_str)
+    
+    # Fit the Cox model with E.Status and P.Status stratification
+    fitcox_stratified = coxph(cox_formula, data = train_data, x = TRUE)
+    cox_model_list_stratified[[i]] <- fitcox_stratified  # Store the Cox model
+    
+    # Store the model summary for this iteration using broom::tidy
+    cox_summary_list_stratified[[i]] <- tidy(fitcox_stratified)
+    
+    
+    ph_test_stratified = cox.zph(fitcox_stratified)
+    ph_test_results_stratified[[i]] = ph_test_stratified
+    
+    # Check if A.Stage violates the PH assumption
+    violated_vars <- ph_test_stratified$table
+    violated_vars <- violated_vars[violated_vars[, "p"] < 0.05, ]
+    
+    if ("A.Stage" %in% rownames(violated_vars)) {
+      print(paste("Iteration", i, ": A.Stage violated the PH assumption. Performing additional stratification on A.Stage."))
+      
+      # Refit the model with A.Stage stratification as well
+      fitcox_stratified_with_A_stage = fit_with_A_stage_stratification(train_data, test_data, remaining_vars)
+      cox_model_list_stratified[[i]] <- fitcox_stratified_with_A_stage  # Update the stored model
+    }
+    
+    # Time points for predictions
+    dis_Survival.Months = sort(unique(train_data$Survival.Months))
+    
+    # Predict survival probabilities for the test data
+    mat_cox_stratified = predictSurvProb(cox_model_list_stratified[[i]], test_data, dis_Survival.Months)
+    
+    # Check for NA values in the prediction matrix
+    if (any(is.na(mat_cox_stratified))) {
+      print(paste("Iteration", i, ": NA values detected in predicted survival probabilities. Skipping IBS calculation."))
+      next  
+    }
+    
+    # Create survival object for test data
+    surv_obj_stratified = Surv(test_data$Survival.Months, test_data$Status)
+    
+    # Calculate the IBS for the stratified Cox model
+    metrics_cox_stratified[i] = IBS(surv_obj_stratified, sp_matrix = mat_cox_stratified, dis_Survival.Months)
+    
+  } else {
+    stop("No remaining covariates to fit the model.")
+  }
+}
+```
+
+
+```{r}
+# ---- Chunk 1: Print the Summary for the 5th Iteration ----
+
+
+print_cox_summary <- function(cox_model_list_stratified, cox_summary_list_stratified) {
+  # Check if the 5th iteration model exists and is valid
+  if (!is.null(cox_model_list_stratified[[5]])) {
+    
+    # Get the model summary for the 5th iteration of the stratified Cox model
+    cox_summary_5th_stratified = cox_summary_list_stratified[[5]]
+    
+    
+    cox_conf_5th_stratified <- confint(cox_model_list_stratified[[5]])
+    
+    # Combine the confidence intervals with the tidy summary
+    cox_summary_5th_stratified <- cbind(cox_summary_5th_stratified, cox_conf_5th_stratified)
+    colnames(cox_summary_5th_stratified)[6:7] <- c("conf.low", "conf.high")
+    
+
+    cox_summary_5th_stratified <- cox_summary_5th_stratified %>%
+      mutate(
+        hazard_ratio = exp(estimate),     
+        conf.low = exp(conf.low),          
+        conf.high = exp(conf.high),        
+        p.value = round(p.value, 3),       
+        estimate = round(estimate, 3),     
+        std.error = round(std.error, 3),   
+        hazard_ratio = round(hazard_ratio, 3),
+        conf.low = round(conf.low, 3),
+        conf.high = round(conf.high, 3)
+      )
+    
+    
+    cox_summary_table_stratified <- cox_summary_5th_stratified %>%
+      select(term, estimate, std.error, statistic, p.value, hazard_ratio, conf.low, conf.high) %>%
+      kable("latex", booktabs = TRUE, caption = "Stratified Cox Proportional-Hazards Model Summary for 5th Iteration") %>%
+      kable_styling(latex_options = c("striped", "hold_position")) %>%
+      add_header_above(c(" " = 1, "Coefficients" = 4, "Hazard Ratios" = 3))
+    
+    
+    print(cox_summary_table_stratified)
+    
+    # Optionally: Extract LaTeX code for the table (this will print the LaTeX code to console)
+    latex_code <- cox_summary_5th_stratified %>%
+      select(term, estimate, std.error, statistic, p.value, hazard_ratio, conf.low, conf.high) %>%
+      kable(format = "latex", booktabs = TRUE, caption = "Stratified Cox Proportional-Hazards Model Summary for 5th Iteration") %>%
+      add_header_above(c(" " = 1, "Coefficients" = 4, "Hazard Ratios" = 3))
+    
+   
+    cat(latex_code)
+    
+  } else {
+    print("The 5th iteration stratified model does not exist.")
+  }
+}
+
+print_cox_summary(cox_model_list_stratified, cox_summary_list_stratified)
+```
+
+
+
+
+```{r}
+# Check the Proportional Hazards Assumption ----
+
+check_ph_assumption <- function(ph_test_results_stratified) {
+  # Check the proportional hazards assumption for the 5th iteration of the stratified model
+  ph_test_5th_stratified = ph_test_results_stratified[[5]]
+  
+ 
+  print(ph_test_5th_stratified)
+  
+  
+  plot(ph_test_5th_stratified, main = "Schoenfeld Residuals for Stratified Model - 5th Iteration")
+  
+  # Ensure that ph_test_5th_stratified$table is not NULL
+  if (!is.null(ph_test_5th_stratified$table)) {
+    
+    
+    violated_vars_stratified <- ph_test_5th_stratified$table
+    
+    # Filter for p-values < 0.05 
+    violated_vars_stratified <- violated_vars_stratified[violated_vars_stratified[, 3] < 0.05, , drop = FALSE]
+    
+    # Check if any rows remain after filtering
+    if (nrow(violated_vars_stratified) == 0) {
+      print("No variables violated the proportional hazards assumption after stratification.")
+    } else {
+      print("Variables that still violated the proportional hazards assumption after stratification:")
+      print(violated_vars_stratified)
+    }
+  } else {
+    print("No proportional hazards test results found or no violations detected.")
+  }
+}
+
+check_ph_assumption(ph_test_results_stratified)
+```
+
+
+
+```{r}
+# ---- Step 3: Plot IBS Scores ----
+
+
+plot_ibs <- function(metrics_cox_stratified) {
+  ibs_results_stratified <- data.frame(Iteration = 1:5, IBS = metrics_cox_stratified)
+  
+  
+  ibs_results_stratified <- ibs_results_stratified[ibs_results_stratified$IBS != 0, ]
+  
+  
+  ibs_mean <- mean(ibs_results_stratified$IBS)
+  ibs_sd <- sd(ibs_results_stratified$IBS)
+  
+
+  ibs_table <- ibs_results_stratified %>%
+    kable("latex", booktabs = TRUE, caption = "Integrated Brier Score (IBS) Across Iterations") %>%
+    kable_styling(latex_options = c("striped", "hold_position"))
+  
+  print(ibs_table)
+  
+
+  print(paste("Mean IBS:", round(ibs_mean, 3)))
+  print(paste("SD of IBS:", round(ibs_sd, 3)))
+  
+  
+  ggplot(ibs_results_stratified, aes(x = factor(Iteration), y = IBS)) +
+    geom_boxplot() +
+    geom_point() +
+    ggtitle("Integrated Brier Score (IBS) Across Iterations") +
+    xlab("Iteration") +
+    ylab("IBS")
+}
+
+plot_ibs(metrics_cox_stratified)
+```
+
+
+```{r}
+# ---- Step 3: Calculate and Print Mean and Standard Deviation of IBS ----
+
+
+print_ibs_stats <- function(metrics_cox_stratified) {
+  ibs_results_stratified <- data.frame(Iteration = 1:5, IBS = metrics_cox_stratified)
+  
+  # Remove zero entries (iterations skipped due to NA issues)
+  ibs_results_stratified <- ibs_results_stratified[ibs_results_stratified$IBS != 0, ]
+  
+  
+  ibs_mean <- mean(ibs_results_stratified$IBS)
+  ibs_sd <- sd(ibs_results_stratified$IBS)
+  
+ 
+  print(paste("Mean IBS:", round(ibs_mean, 3)))
+  print(paste("SD of IBS:", round(ibs_sd, 3)))
+}
+
+
+print_ibs_stats(metrics_cox_stratified)
+```
+
+
+
+```{r}
+# ---- Step 4: Create an Enhanced and Beautiful Custom Forest Plot ----
+
+
+plot_beautiful_forest <- function(cox_model_list_stratified, iteration = 5) {
+  
+  # Ensure that the model for the selected iteration exists
+  if (!is.null(cox_model_list_stratified[[iteration]])) {
+    
+    
+    cox_model <- cox_model_list_stratified[[iteration]]
+    
+    
+    cox_summary <- tidy(cox_model)
+    
+  
+    cox_conf <- confint(cox_model)
+    
+
+    cox_summary <- cbind(cox_summary, cox_conf)
+    colnames(cox_summary)[6:7] <- c("conf.low", "conf.high")
+    
+    
+    cox_summary <- cox_summary %>%
+      mutate(
+        hazard_ratio = exp(estimate),
+        conf.low = exp(conf.low),          
+        conf.high = exp(conf.high),        
+        significance = case_when(          
+          p.value < 0.001 ~ "***",
+          p.value < 0.01 ~ "**",
+          p.value < 0.05 ~ "*",
+          TRUE ~ ""
+        ),
+        term = gsub("_", " ", term)  
+      )
+    
+    
+    ggplot(cox_summary, aes(x = reorder(term, hazard_ratio), y = hazard_ratio, ymin = conf.low, ymax = conf.high)) +
+      geom_pointrange(aes(color = term), size = 0.9, fatten = 3) +                 
+      geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", size = 1) + 
+      geom_text(aes(label = paste0(round(hazard_ratio, 2), significance)),       
+                hjust = -0.3, vjust = 0.5, size = 4, fontface = "bold") +         
+      coord_flip() +                                                               
+      scale_color_viridis_d(option = "C") +                                        
+      labs(title = "Enhanced Hazard Ratios with 95% Confidence Intervals", 
+           x = "Variables", y = "Hazard Ratio") +
+      theme_minimal() +
+      theme(
+        legend.position = "none",                
+        axis.text.x = element_text(size = 12, face = "bold"),    
+        axis.text.y = element_text(size = 12, face = "bold"),    
+        axis.title = element_text(size = 14),                   
+        plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+        panel.grid.major = element_line(color = "gray85"),        
+        panel.grid.minor = element_blank()                       
+      )
+  } else {
+    print(paste("The Cox model for iteration", iteration, "does not exist."))
+  }
+}
+
+plot_beautiful_forest(cox_model_list_stratified, iteration = 5)
+```
+
+
+```{r}
+
+get_cox_summary_with_cindex <- function(cox_model_list_stratified, iteration = 5) {
+  
+  
+  if (!is.null(cox_model_list_stratified[[iteration]])) {
+    
+    
+    cox_model <- cox_model_list_stratified[[iteration]]
+    
+    
+    cox_summary <- summary(cox_model)
+    c_index <- cox_summary$concordance[1]  
+    c_index_se <- cox_summary$concordance[2]  
+    
+  
+    cox_tidy <- broom::tidy(cox_model)
+    
+    
+    cox_conf <- confint(cox_model)
+    
+    
+    cox_tidy <- cbind(cox_tidy, cox_conf)
+    colnames(cox_tidy)[6:7] <- c("conf.low", "conf.high")
+    
+    
+    cox_tidy <- cox_tidy %>%
+      mutate(
+        hazard_ratio = exp(estimate),      
+        conf.low = exp(conf.low),          
+        conf.high = exp(conf.high),        
+        significance = case_when(          
+          p.value < 0.001 ~ "***",
+          p.value < 0.01 ~ "**",
+          p.value < 0.05 ~ "*",
+          TRUE ~ ""
+        )
+      )
+    
+    
+    summary_table <- cox_tidy %>%
+      select(term, hazard_ratio, conf.low, conf.high, p.value, significance) %>%
+      rename(
+        Variable = term,
+        `HR` = hazard_ratio,
+        `95% CI (Lower)` = conf.low,
+        `95% CI (Upper)` = conf.high,
+        `p-value` = p.value,
+        `Significance` = significance
+      )
+    
+    # Print the C-index
+    cat("Concordance Index (C-index):", c_index, "\n")
+    cat("Standard Error of C-index:", c_index_se, "\n\n")
+    
+  
+    print(summary_table)
+    
+    return(list(c_index = c_index, c_index_se = c_index_se, summary_table = summary_table))
+    
+  } else {
+    print(paste("The Cox model for iteration", iteration, "does not exist."))
+    return(NULL)
+  }
+}
+
+
+cox_summary_with_cindex_5th <- get_cox_summary_with_cindex(cox_model_list_stratified, iteration = 5)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
