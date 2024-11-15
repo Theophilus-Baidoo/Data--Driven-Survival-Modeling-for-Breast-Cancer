@@ -389,7 +389,7 @@ print(plot_tumor)
 
 ```{r, include=FALSE}
 # Perform pairwise survival comparisons for tumor_size_group with Bonferroni adjustment
-pairwise_comp_tumor <- pairwise_survdiff(Surv(Survival.Months, Status) ~ tumor_size_group, data = data, p.adjust.method = 'bonferroni')
+pairwise_comp_tumor <- pairwise_survdiff(Surv(Survival.Months, Status) ~ Tumor_Size_Category, data = data, p.adjust.method = 'bonferroni')
 
 
 pairwise_pval_tumor <- as.data.frame(pairwise_comp_tumor$p.value)
