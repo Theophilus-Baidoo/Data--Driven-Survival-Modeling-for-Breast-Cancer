@@ -368,11 +368,11 @@ pairwise_pval8
 # Using case_when with boundary conditions matching cut
 data$Tumor_Size_Category <- factor(dplyr::case_when(
     data$Tumor.Size < 25 ~ "<25mm",
-    data$Tumor.Size >= 25 & data$Tumor.Size <= 45 ~ "25-45mm", # Changed <= 45 to < 45
+    data$Tumor.Size >= 25 & data$Tumor.Size <= 45 ~ "25-45mm", 
     data$Tumor.Size >= 45 ~ ">45mm"
 ), levels = c("<25mm", "25-45mm", ">45mm"))
 
-# Display the frequency table for the new tumor size categories
+
 table(data$Tumor_Size_Category)
 
 
