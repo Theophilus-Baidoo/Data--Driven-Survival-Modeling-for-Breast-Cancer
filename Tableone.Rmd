@@ -1,0 +1,251 @@
+---
+title: "RANDOM SURVIVAL FORESTS (RSF) AND SHAP ANALYSIS"
+subtitle: "TABLE ONE"
+author:
+  - "Theophilus G. Baidoo^[tbaidoo@iu.edu, Indiana University Bloomington.]"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  bookdown::pdf_document2:
+    fig_caption: true
+    latex_engine: xelatex
+    number_sections: false
+    toc: False
+    toc_depth: 4
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{pdfpages}
+  - \usepackage{amssymb}
+  - \usepackage{amsfonts}
+  - \usepackage{amsthm}
+  - \usepackage{floatrow}
+  - \usepackage{pdfpages}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{Theophilus Baidoo}
+  - \lhead{}
+  - \cfoot{\thepage}
+  - \usepackage{algorithm}
+  - \usepackage[noend]{algpseudocode}
+geometry: margin=0.8in
+fontsize: 12pt
+params:
+  proj_number:
+  proj_title: ""
+---
+
+```{r}
+library(SurvMetrics)
+library(caret)
+library(randomForestSRC)
+library(survival)  
+library(pec)
+library(ggplot2)
+library(dplyr)
+library(gtsummary)
+library(gt)
+set.seed(123)
+```
+
+```{r}
+mydata<-read.csv("C:/Users/tbaidoo/Desktop/Research/SEER Breast Cancer Dataset .csv")
+head(mydata)
+
+
+new_names <- c("Progesterone.Status" = "P.Status",
+               "Estrogen.Status" = "E.Status",
+               "Regional.Node.Examined" = "Reg.Examined",
+               "Reginol.Node.Positive" = "Reg.Positive",
+               "Marital.Status" = "M.Status")
+
+for (old_name in names(new_names)) {
+  mydata <- mydata %>% rename(!!new_names[old_name] := !!sym(old_name))
+}
+
+
+mydata <- mydata %>%
+  # Recode Race
+  mutate(Race = case_when(
+    Race == "Other (American Indian/AK Native, Asian/Pacific Islander)" ~ "Other",
+    Race == "White" ~ "White",
+    Race == "Black" ~ "Black"
+  )) %>%
+  
+  # Recode Grade
+  mutate(Grade = case_when(
+    Grade == "Moderately differentiated; Grade II" ~ "Grade II",
+    Grade == "Poorly differentiated; Grade III" ~ "Grade III",
+    Grade == "Well differentiated; Grade I" ~ "Grade I",
+    Grade == "Undifferentiated; anaplastic; Grade IV" ~ "Grade IV"
+  )) %>%
+  
+  # Recode Marital Status
+  mutate(M.Status = case_when(
+    M.Status == "Married (including common law)" ~ "Married",
+    M.Status == "Divorced" ~ "Divorced",
+    M.Status == "Single (never married)" ~ "Single",
+    M.Status == "Widowed" ~ "Widowed",
+    M.Status == "Separated" ~ "Separated"
+  )) %>%
+  
+  # Recode Status
+  mutate(Status = case_when(
+    Status == "Alive" ~ "Censored",
+    Status == "Dead" ~ "Deceased"
+  ))
+
+
+
+categorical_vars <- c("Race", "M.Status", "T.Stage", "N.Stage", "A.Stage", "Grade", "E.Status", "P.Status","Status")
+mydata[categorical_vars] <- lapply(mydata[categorical_vars], as.factor)
+mydata <- mydata[, -6] # Remove unnecessary column (adjust as necessary)
+
+
+for(i in seq_along(mydata)) {
+  if(is.character(mydata[[i]])) {
+    mydata[[i]] <- as.factor(mydata[[i]])
+  }
+}
+
+
+head(mydata)
+str(mydata)
+
+
+# Identify continuous variables by checking if they are numeric
+continuous_vars <- sapply(mydata, is.numeric)
+
+# Function to check normality and plot
+for (var in names(mydata)[continuous_vars]) {
+  cat("Normality check for:", var, "\n")
+  
+  # Shapiro-Wilk test for normality
+  shapiro_test <- shapiro.test(mydata[[var]])
+  print(shapiro_test)
+  
+ 
+  if (shapiro_test$p.value < 0.05) {
+    cat("Non-normally distributed (use median, Q1, Q3)\n\n")
+  } else {
+    cat("Normally distributed (use mean and SD)\n\n")
+  }
+  
+  
+  par(mfrow=c(1, 2))
+  hist(mydata[[var]], main = paste("Histogram of", var), xlab = var)
+  qqnorm(mydata[[var]], main = paste("Q-Q plot of", var))
+  qqline(mydata[[var]])
+}
+par(mfrow=c(1, 1)) 
+
+
+
+```
+
+
+
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(gtsummary)
+library(gt)
+library(flextable)
+
+# Step 1: Data Preprocessing
+data_selected <- mydata %>%
+  # Exclude Survival.Months (not required for Table 1)
+  dplyr::select(-Survival.Months) %>%
+  
+  # Create custom categories for Age and Tumor Size
+  mutate(
+    Age_Category = case_when(
+      Age >= 30 & Age <= 50 ~ "30-50",
+      Age >= 51 & Age <= 60 ~ "51-60",
+      Age >= 61 & Age <= 70 ~ "61-70",
+      TRUE ~ "Other"
+    ),
+    Tumor_Size_Category = case_when(
+      Tumor.Size < 25 ~ "<25mm",
+      Tumor.Size >= 25 & Tumor.Size <= 45 ~ "25-45mm",
+      Tumor.Size > 45 ~ ">45mm"
+    ),
+    
+    # Convert relevant variables to factors
+    Race = as.factor(Race),
+    M.Status = as.factor(M.Status),
+    T.Stage = as.factor(T.Stage),
+    N.Stage = as.factor(N.Stage),
+    Grade = as.factor(Grade),
+    E.Status = as.factor(E.Status),
+    P.Status = as.factor(P.Status),
+    Status = as.factor(Status),
+    Age_Category = as.factor(Age_Category),
+    Tumor_Size_Category = as.factor(Tumor_Size_Category)
+  ) %>%
+  
+  # Reorder columns for better presentation
+  dplyr::select(
+    Age_Category, Tumor_Size_Category,  # Move these to the top
+    Race, M.Status, T.Stage, Grade, Status,
+    E.Status, P.Status, N.Stage
+  )
+
+# Step 2: Define Custom Summary Statistics
+custom_stats <- list(
+  all_continuous() ~ "{median} ({p25}, {p75})",  # Median and IQR for continuous variables
+  all_categorical() ~ "{n} ({p}%)"               # Count and percentage for categorical variables
+)
+
+# Step 3: Generate Table 1
+table_one <- tbl_summary(
+  data = data_selected,
+  by = Status,                       # Stratify by Status
+  statistic = custom_stats,          # Use custom summary statistics
+  digits = all_continuous() ~ 2,     # Set decimal places for continuous variables
+  missing = "ifany"                  # Show missing data if any
+) %>%
+  add_p() %>%                        # Automatically add appropriate p-values
+  add_n() %>%                        # Include total sample size per group
+  add_overall() %>%                  # Add an overall summary column
+  add_stat_label() %>%               # Label statistics type (e.g., Median (IQR))
+  modify_header(label = "**Variable**") %>%  # Customize header labels
+  bold_p(t = 0.05) %>%               # Bold significant p-values
+  modify_caption("**Table 1: Baseline Characteristics Stratified by Survival Status**") %>%  # Add table caption
+  bold_labels()
+
+# Step 4: Convert Table to gt for Formatting
+table_one_gt <- table_one %>%
+  as_gt() %>%
+  gt::tab_header(
+    title = "Table 1: Summary Statistics Stratified by Status",
+    subtitle = "Continuous variables are presented as Median (IQR); categorical variables as n (%)"
+  ) %>%
+  gt::cols_label(
+    label = md("**Variable**"),
+    stat_0 = md("**Overall**"),
+    p.value = md("**p-value**")
+  ) %>%
+  gt::tab_options(
+    table.font.names = "Arial",
+    column_labels.font.weight = "bold",
+    table.border.top.width = gt::px(2),
+    table.border.bottom.width = gt::px(2),
+    table_body.hlines.width = gt::px(1)
+  )
+
+# Step 5: Export Table (Optional)
+# Export to Word
+flextable::save_as_docx(as_flex_table(table_one), path = "Table_1.docx")
+
+# Export to PDF
+gt::gtsave(table_one_gt, filename = "Table_1.pdf")
+
+# Step 6: Print Table
+table_one_gt
+
+```
+
+`
+
