@@ -4,4 +4,4 @@ This study explores the application of data-driven survival modeling techniques 
 
 ## Dataset
 
-The dataset used in my research is sourced from the **[SEER Breast Cancer Data](https://ieee-dataport.org/open-access/seer-breast-cancer-data)** provided by the IEEE DataPort. It includes data on breast cancer cases, allowing for extensive analysis of survival outcomes and predictors.
+The dataset used in this research is sourced from the **[SEER Breast Cancer Data](https://ieee-dataport.org/open-access/seer-breast-cancer-data)** provided by the IEEE DataPort. It includes data on breast cancer cases, allowing for extensive analysis of survival outcomes and predictors.
