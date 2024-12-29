@@ -462,7 +462,7 @@ for (i in 1:5) {
 
 
 ```{r}
-# ---- Step 2: Print the summary for the 5th iteration ----
+# ---- Print the summary for the 5th iteration ----
 
 
 cox_summary_5th = cox_summary_list[[5]]
@@ -916,7 +916,7 @@ check_ph_assumption(ph_test_results_stratified)
 
 
 ```{r}
-# ---- Step 3: Plot IBS Scores ----
+# ---- Plot IBS Scores ----
 
 
 plot_ibs <- function(metrics_cox_stratified) {
@@ -954,7 +954,7 @@ plot_ibs(metrics_cox_stratified)
 
 
 ```{r}
-# ---- Step 3: Calculate and Print Mean and Standard Deviation of IBS ----
+# ---- Calculate and Print Mean and Standard Deviation of IBS ----
 
 
 print_ibs_stats <- function(metrics_cox_stratified) {
@@ -979,7 +979,7 @@ print_ibs_stats(metrics_cox_stratified)
 
 
 ```{r}
-# ---- Step 4: Create an Enhanced and Beautiful Custom Forest Plot ----
+# ---- Create an Enhanced and Beautiful Custom Forest Plot ----
 
 
 plot_beautiful_forest <- function(cox_model_list_stratified, iteration = 5) {
