@@ -268,7 +268,7 @@ cat("Average IBS for RSF:", ibs_mean, "±", ibs_sd, "\n")
 
 
 ```{r}
-# Step 5: SHAP Analysis for the Test Data
+# SHAP Analysis for the Test Data
 # Function to get predictions for SHAP
 library(kernelshap)
 library(shapviz)
@@ -301,7 +301,7 @@ sv_dependence(sv, "Age")
 ```{r}
 
 
-# Step 6: Generate Survival Curves Based on Tumor Size Categories
+# Generate Survival Curves Based on Tumor Size Categories
 
 test_data <- test_data %>%
   mutate(Tumor.Size.Category = case_when(
@@ -351,7 +351,7 @@ ggplot(surv_data_avg, aes(x = Time, y = Survival, color = Tumor.Size.Category)) 
 
 
 
-#Step 6: Generate Survival Curves Based on Age Categories
+# Generate Survival Curves Based on Age Categories
 
 
 test_data <- test_data %>%
@@ -369,13 +369,13 @@ print(category_counts_age)
 
 test_data$Age.Category <- factor(test_data$Age.Category, levels = c("Age 30-50", "Age 51-60", "Age 61-70"))
 
-#Predict survival probabilities on the test set using the final RSF model
+# Predict survival probabilities on the test set using the final RSF model
 test_pred_age <- predict(final_model, newdata = test_data)$survival
 
-#Define a simplified time vector based on model time points
+# Define a simplified time vector based on model time points
 time_points_age <- final_model$time.interest
 
-# Step 6: Create survival curve data and aggregate survival probabilities
+# Create survival curve data and aggregate survival probabilities
 # Create a long-format data frame with survival predictions and age category
 surv_data_age <- data.frame(
   Time = rep(time_points_age, each = nrow(test_data)),
