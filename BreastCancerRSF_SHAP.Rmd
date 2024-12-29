@@ -58,7 +58,7 @@ ibs_scores <- numeric()
 # Set the number of iterations for evaluation
 num_iterations <- 10
 
-# Step 1: Load and Preprocess Data
+# Load and Preprocess Data
 
 data <- read.csv("SEER.csv")
 head(data)
@@ -102,7 +102,7 @@ data <- data[, -6] # Remove unnecessary column (adjust as necessary)
 # Define survival formula
 v.f <- as.formula("Surv(Survival.Months, Status) ~ .")
 
-# Step 2: Select the Best Splitting Criterion
+# Select the Best Splitting Criterion
 
 splitrule <- c("logrank", "logrankscore")
 nrep <- 10
@@ -130,7 +130,7 @@ print(err.rate_summary)
 best_splitrule <- err.rate_summary$SplitRule[which.min(err.rate_summary$MeanErrorRate)]
 cat("Selected Best Splitting Criterion:", best_splitrule, "\n")
 
-# Step 3: Hyperparameter Tuning with 5-Fold Cross-Validation on Training Set
+# Hyperparameter Tuning with 5-Fold Cross-Validation on Training Set
 
 # Define a grid of hyperparameters to test
 tune_grid <- expand.grid(
@@ -183,7 +183,7 @@ best_params <- cv_results[which.min(cv_results$MeanCVError), ]
 print("Best Hyperparameters:")
 print(best_params)
 
-# Step 4: Run Multiple Iterations for Final Model Evaluation (C-index, Brier Score, IBS)
+# Run Multiple Iterations for Final Model Evaluation (C-index, Brier Score, IBS)
 
 for (iteration in 1:num_iterations) {
   cat("Iteration:", iteration, "\n")
