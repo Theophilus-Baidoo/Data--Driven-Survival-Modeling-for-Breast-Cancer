@@ -153,7 +153,7 @@ library(gtsummary)
 library(gt)
 library(flextable)
 
-# Step 1: Data Preprocessing
+# Data Preprocessing
 data_selected <- mydata %>%
   # Exclude Survival.Months (not required for Table 1)
   dplyr::select(-Survival.Months) %>%
@@ -192,13 +192,13 @@ data_selected <- mydata %>%
     E.Status, P.Status, N.Stage
   )
 
-# Step 2: Define Custom Summary Statistics
+# Define Custom Summary Statistics
 custom_stats <- list(
   all_continuous() ~ "{median} ({p25}, {p75})",  # Median and IQR for continuous variables
   all_categorical() ~ "{n} ({p}%)"               # Count and percentage for categorical variables
 )
 
-# Step 3: Generate Table 1
+# Generate Table 1
 table_one <- tbl_summary(
   data = data_selected,
   by = Status,                       # Stratify by Status
@@ -215,7 +215,7 @@ table_one <- tbl_summary(
   modify_caption("**Table 1: Baseline Characteristics Stratified by Survival Status**") %>%  # Add table caption
   bold_labels()
 
-# Step 4: Convert Table to gt for Formatting
+# Convert Table to gt for Formatting
 table_one_gt <- table_one %>%
   as_gt() %>%
   gt::tab_header(
@@ -235,14 +235,14 @@ table_one_gt <- table_one %>%
     table_body.hlines.width = gt::px(1)
   )
 
-# Step 5: Export Table (Optional)
+# Export Table (Optional)
 # Export to Word
 flextable::save_as_docx(as_flex_table(table_one), path = "Table_1.docx")
 
 # Export to PDF
 gt::gtsave(table_one_gt, filename = "Table_1.pdf")
 
-# Step 6: Print Table
+
 table_one_gt
 
 ```
