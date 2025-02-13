@@ -235,7 +235,7 @@ table_one_gt <- table_one %>%
     table_body.hlines.width = gt::px(1)
   )
 
-# Export Table (Optional)
+
 # Export to Word
 flextable::save_as_docx(as_flex_table(table_one), path = "Table_1.docx")
 
