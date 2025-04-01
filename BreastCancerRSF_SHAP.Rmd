@@ -2,7 +2,7 @@
 title: "RANDOM SURVIVAL FORESTS (RSF) WITH SHAP ANALYSIS"
 subtitle: "RSF MODEL"
 author:
-  - "Theophilus G. Baidoo^[tbaidoo@iu.edu, Indiana University Bloomington.]"
+  - "Theophilus G. Baidoo^[.]"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
   bookdown::pdf_document2:
