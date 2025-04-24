@@ -669,7 +669,7 @@ print_cox_summary_with_latex(cox_model_list_stratified, cox_summary_list_stratif
 
 ```{r}
 
-# ---- Chunk 2: Check the Proportional Hazards Assumption ----
+# ---- Check the Proportional Hazards Assumption ----
 
 check_ph_assumption <- function(ph_test_results_stratified) {
   # Check the proportional hazards assumption for the 5th iteration of the stratified model
@@ -815,7 +815,7 @@ for (i in 1:5) {
 
 
 ```{r}
-# ---- Chunk 1: Print the Summary for the 5th Iteration ----
+# ---- Print the Summary for the 5th Iteration ----
 
 
 print_cox_summary <- function(cox_model_list_stratified, cox_summary_list_stratified) {
